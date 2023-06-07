@@ -1,0 +1,89 @@
+name: ModuleQuality
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go Version'
+        required: false
+        default: '1.20.4'
+        type: string
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: setup go
+      uses: actions/setup-go@v3
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: test
+      run: go test -v -coverprofile=profile.cov ./...
+
+    - name: send coverage
+      uses: shogo82148/actions-goveralls@v1
+      with:
+        path-to-profile: profile.cov
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: setup go
+      uses: actions/setup-go@v3
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v0
+      with:
+        versionSpec: '5.x'
+    - name: GitVersion
+      id:   gitversion # id to later be referenced
+      uses: gittools/actions/gitversion/execute@v0
+    - name: SonarCloud Config
+      run: |
+        # get module name from go.mod
+        module=$(cat go.mod | grep module); module=${module## }
+
+        # remove any /vN version suffix ...
+        while [[ $module == *[0-9] ]]; do module=${module%?}; done
+        if [[ $module == */v ]]; then module=${module%??}; fi
+
+        # .. and the github.com/ prefix, converting to lowercase for the name
+        # and replacing '/' with ':' for the key
+        name=$(echo ${module#*github.com/} | tr '[:upper:]' '[:lower:]')
+        key=$(echo $name | tr '/' ':')
+
+        version=$(echo ${{ steps.gitversion.outputs.semVer }} | tr '[:upper:]' '[:lower:]')
+    
+        cat << EOF >> sonar-project.properties
+        sonar.organization=blugnu
+        sonar.projectKey=$key
+        sonar.projectName=$name
+        sonar.projectVersion=$version
+        EOF
+
+        cat sonar-project.properties
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
