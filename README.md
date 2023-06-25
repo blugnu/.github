@@ -1,2 +1,6 @@
-# .workflows
-reusable github action workflows employed by other blugnu repositories
+# blugnu
+
+## Repositories
+|    | _description_ |
+| -- | ----------- |
+| `.github` | Provides reusable workflows for `blugnu` projects and this `README` |
